@@ -13,6 +13,19 @@ import external
 
 #external.transparentify(data.personImage, 80)
 
+class Cell(object):
+    def __init__(self):
+        self.items = []
+
+    def addItem(self, item):
+        self.items.append(item)
+
+    def containsInstance(self, data, cls):
+        for item in self.items:
+            if type(item) == cls:
+                return True
+        return False
+
 class Data(object):
     pass
 
@@ -36,6 +49,12 @@ class Empty(GameObject):
     def __init__(self, data, x, y):
         super().__init__(data, x, y)
         self.image = data.emptyImage
+        self.rect = self.image.get_rect()
+
+class Road(GameObject):
+    def __init__(self, data, x, y):
+        super().__init__(data, x, y)
+        self.image = data.roadImage
         self.rect = self.image.get_rect()
 
 class Person(GameObject):
@@ -62,26 +81,32 @@ class Person(GameObject):
 # IMPLEMENT DATA STRUCTS
 ################################################################################
 
-def newPerson(data, row, col): #x and y in gridX and gridY
-    name = random.choice(tuple(data.firstNames)) + " "\
-            + random.choice(string.ascii_uppercase)
-    person = Person(data, col, row, name,100,100)
-    data.grid[row][col] = person
-    data.people.add(person)
-    print(person.name)
+def newRoad(data, row, col): #x and y in gridX and gridY
+    if not data.grid[row][col].containsInstance(data, Road):
+        road = Road(data, col, row)
+        data.grid[row][col].addItem(road)
+        data.roads.add(road)
+        print(road.x, road.y)
+    else:
+        print("sorry, a Road is already there")
 
-def newEmpty(data, row, col): #x and y in gridX and gridY
-    name = random.choice(tuple(data.firstNames)) + " "\
-            + random.choice(string.ascii_uppercase)
-    person = Empty(data, col, row)
-    data.grid[y][x] = person
-    data.people.add(person)
-    print(person.name)
+def newPerson(data, row, col): #x and y in gridX and gridY
+    if not data.grid[row][col].containsInstance(data, Person):
+        name = random.choice(tuple(data.firstNames)) + " "\
+                + random.choice(string.ascii_uppercase)
+        person = Person(data, col, row, name,100,100)
+        data.grid[row][col].addItem(person)
+        data.people.add(person)
+        print(person.name)
+    else:
+        print("sorry, a Person is already there")
 
 def updateAndAdd(data):
     #update sprites
     for empty in data.empties:
         empty.updateSelf(data)
+    for road in data.roads:
+        road.updateSelf(data)
     for person in data.people:
         person.updateSelf(data)
 
@@ -91,6 +116,7 @@ def updateAndAdd(data):
 
     #draw on screen
     data.empties.draw(data.screen) #least recent call goes to back of canvas
+    data.roads.draw(data.screen)
     data.people.draw(data.screen)
 
 ################################################################################
@@ -124,7 +150,10 @@ def eventHandler(event, data):
         mousey = pygame.mouse.get_pos()[1]
         col, row = screenToGrid(data, mousex, mousey)
         if validGridPos(data, row, col):
-            newPerson(data, row, col)
+            if data.selection == "Person":
+                newPerson(data, row, col)
+            if data.selection == "Road":
+                newRoad(data, row, col)
         else: print("invalid location (row, col):", row, col)
 
 
@@ -140,8 +169,10 @@ def arrowKeysMovement(data):
         data.scrollY -= data.scrollSpeed
     elif keysPressed[pygame.K_p] == 1:
         data.selection = "Person"
-    elif keysPressed[pygame.K_b] == 1:
-        data.selection = "Building"
+        print("selected person!")
+    elif keysPressed[pygame.K_r] == 1:
+        data.selection = "Road"
+        print("selected road!")
 
 def timerFired(data):
     arrowKeysMovement(data)
@@ -197,13 +228,16 @@ def init(data):
     data.gridPxLen = 32
     data.grid = []
     for i in range(data.gridHeight):
-        data.grid.append([None] * data.gridWidth)
-    data.people = pygame.sprite.Group()
+        temp = []
+        for j in range(data.gridWidth):
+            temp.append(Cell())
+        data.grid.append(temp)
     data.empties = pygame.sprite.Group()
     for row in range(data.gridHeight):
         for col in range(data.gridWidth):
             empty = Empty(data, col, row)
             data.empties.add(empty)
+    data.people = pygame.sprite.Group()
     data.roads = pygame.sprite.Group()
     data.buildings = pygame.sprite.Group()
     data.text = pygame.sprite.Group()
