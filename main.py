@@ -7,42 +7,34 @@ import external
 
 #written with a lot of help from the docs https://www.pygame.org/docs
 
-#TODO: ADD MIXER FROM EXTERNALCODE
-
+################################################################################
+# DATA STRUCTS
+################################################################################
 
 class Data(object):
     pass
 
 class Shadow(pygame.sprite.Sprite):
-    def __init__(self, data, cx, cy):
-        self.cx = cx
-        self.cy = cy
+    def __init__(self, data, x, y):
+        self.x = x
+        self.y = y
         self.data = data
         self.image = external.transparentify(data.personImage, 80)
 
 class Road(pygame.sprite.Sprite):
-    def __init__(self, data, cx, cy, name):
+    def __init__(self, data, x, y, name):
         pygame.sprite.Sprite.__init__(self)
-        self.cx = cx
-        self.cy = cy
-        self.data = data
-        self.name = name
-        self.image = None
-
-class Building(pygame.sprite.Sprite):
-    def __init__(self, data, cx, cy, name):
-        pygame.sprite.Sprite.__init__(self)
-        self.cx = cx
-        self.cy = cy
+        self.x = x
+        self.y = y
         self.data = data
         self.name = name
         self.image = None
 
 class Person(pygame.sprite.Sprite):
-    def __init__(self, data, cx, cy, name, hunger, sleepiness):
+    def __init__(self, data, x, y, name, hunger, sleepiness):
         pygame.sprite.Sprite.__init__(self)
-        self.cx = cx
-        self.cy = cy
+        self.x = x
+        self.y = y
         self.data = data
         self.name = name
         self.hunger = hunger
@@ -53,34 +45,62 @@ class Person(pygame.sprite.Sprite):
         self.updatePosition(data)
 
     def updateSelf(self, data):
-        # self.move((0,1))
         self.updatePosition(data)
 
     def updatePosition(self, data):
-        self.rect.center = (self.cx + data.scrollX, self.cy + data.scrollY)
+        self.rect.center = (self.x*data.gridPxLen + data.scrollX,
+                            self.y*data.gridPxLen + data.scrollY)
 
     def move(self, direction):
-        self.cx += self.moveSpeed * direction[0]
-        self.cy += self.moveSpeed * direction[1]
+        self.x += direction[0]
+        self.y += direction[1]
+
+################################################################################
+# IMPLEMENT DATA STRUCTS
+################################################################################
+
+def newPerson(data, x, y): #x and y in gridX and gridY
+    name = random.choice(tuple(data.firstNames)) + " "\
+            + random.choice(string.ascii_uppercase)
+    person = Person(data, x, y, name,100,100)
+    data.grid[y][x] = person
+    data.people.add(person)
+    print(person.name)
+
+################################################################################
+# UTILITY
+################################################################################
+
+#converts an x, y coord to its scrollX, scrollY, coordinates. returns tuple
+
+def validGridPos(gridRow, gridCol, data):
+    return gridRow >= 0 and gridRow < len(data.grid)\
+        and gridCol >= 0 and gridCol < len(data.grid[0])
+
+def gridToScreen(data, x, y):
+    return (x * data.gridPxLen + data.scrollX,
+            y * data.gridPxLen + data.scrollY)
+
+#converts an x, y coord on screen to value in the grid array
+def screenToGrid(data, x, y):
+    return ((x - data.scrollX)// data.gridPxLen,
+            (y - data.scrollY)// data.gridPxLen)
+
+
+
+################################################################################
+# EVENT HANDLING
+################################################################################
 
 def eventHandler(event, data):
     if event.type == pygame.MOUSEBUTTONDOWN:
         mousex = pygame.mouse.get_pos()[0]
         mousey = pygame.mouse.get_pos()[1]
-        newPerson(data, mousex, mousey)
+        gridX, gridY = screenToGrid(data, mousex, mousey)
+        if validGridPos(gridY, gridX, data):
+            newPerson(data, gridX, gridY)
+        else: print("invalid location:", gridX, gridY)
 
-def newPerson(data, x, y):
-    name = random.choice(tuple(data.firstNames)) + " "\
-            + random.choice(string.ascii_uppercase)
-    person = Person(data, x - data.scrollX, y - data.scrollY,
-                    name,100,100)
-    data.people.add(person)
-    print(person.name)
-
-def newRoad(data, x, y):
-    road = Road(data, x - data.scrollX, y - data.scrollY)
-    data.people.add(person)
-    print(person.name)
 
 def arrowKeysMovement(data):
     keysPressed = pygame.key.get_pressed()
@@ -102,15 +122,35 @@ def timerFired(data):
     if data.bgMusicChannel.get_queue() ==  None:
         data.bgMusicChannel.queue(data.bgMusic)
         print(data.bgMusicChannel.get_queue())
-    data.people.update()
-    data.people.draw(data.screen)
-    for person in data.people:
-        person.updateSelf(data)
+    #data.people.update()
+    #data.people.draw(data.screen)
+    for row in range(data.gridHeight):
+        for col in range(data.gridWidth):
+            x, y = gridToScreen(data, col, row)
+            data.screen.blit(data.emptyImage, (x, y))
+    for row in range(data.gridHeight):
+        for col in range(data.gridWidth):
+            drawImages(data, row, col)
+
+################################################################################
+# GRAPHICS
+################################################################################
+
+def drawImages(data, row, col):
+    x, y = gridToScreen(data, col, row)
+    image = None
+    if type(data.grid[row][col]) == Person:
+        image = data.personImage
+    if image != None:
+        data.screen.blit(image, (x, y))
+
+################################################################################
+# INIT
+################################################################################
 
 def init(data):
     #screen vars
-    data.width, data.height = 800, 700
-    data.cityWidth, data.cityHeight = 25, 25
+    data.width, data.height = 900, 800
 
     #states
     data.selection = None
@@ -124,23 +164,27 @@ def init(data):
     data.bgMusicChannel.play(data.bgMusic)
 
     #load imgs
-    data.personImage = pygame.image.load("res/Images/person.png")
-    data.restaurantImage = pygame.image.load("res/Images/restaurant.png")
-    data.roadImage = pygame.image.load("res/Images/road.png")
+    data.emptyImage = pygame.image.load("res/Images/empty.png").convert()
+    data.personImage = pygame.image.load("res/Images/person.png").convert()
+    data.restaurantImage = pygame.image.load("res/Images/restaurant.png").convert()
+    data.roadImage = pygame.image.load("res/Images/road.png").convert()
 
     #scroll vars
     data.scrollSpeed = 10
     data.scrollX, data.scrollY = 0, 0
 
     #load data structs
-    data.board = []
+    data.gridWidth, data.gridHeight = 32, 32
+    data.gridPxLen = 32
+    data.grid = []
+    for i in range(data.gridHeight):
+        data.grid.append([None] * data.gridWidth)
+    print(data.grid)
     data.people = pygame.sprite.Group()
     data.roads = pygame.sprite.Group()
     data.buildings = pygame.sprite.Group()
     data.text = pygame.sprite.Group()
     data.menu = pygame.sprite.Group()
-
-
 
     data.firstNames = {"Bob", "Joe", "Steve", "John", "Humphrey", "Ben", "Jack",
                   "Mark", "Paul", "Forrest", "James", "Robert", "Nick", "Egg",
