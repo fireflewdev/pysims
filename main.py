@@ -11,45 +11,48 @@ import external
 # DATA STRUCTS
 ################################################################################
 
+#external.transparentify(data.personImage, 80)
+
 class Data(object):
     pass
 
-class Shadow(pygame.sprite.Sprite):
+class GameObject(pygame.sprite.Sprite):
     def __init__(self, data, x, y):
-        self.x = x
-        self.y = y
-        self.data = data
-        self.image = external.transparentify(data.personImage, 80)
-
-class Road(pygame.sprite.Sprite):
-    def __init__(self, data, x, y, name):
         pygame.sprite.Sprite.__init__(self)
-        self.x = x
-        self.y = y
+        self.x, self.y = x, y
         self.data = data
-        self.name = name
-        self.image = None
-
-class Person(pygame.sprite.Sprite):
-    def __init__(self, data, x, y, name, hunger, sleepiness):
-        pygame.sprite.Sprite.__init__(self)
-        self.x = x
-        self.y = y
-        self.data = data
-        self.name = name
-        self.hunger = hunger
-        self.sleepiness = sleepiness
-        self.image = data.personImage
-        self.moveSpeed = 5
+        self.image = data.emptyImage
         self.rect = self.image.get_rect()
-        self.updatePosition(data)
 
     def updateSelf(self, data):
         self.updatePosition(data)
 
     def updatePosition(self, data):
-        self.rect.center = (self.x*data.gridPxLen + data.scrollX,
-                            self.y*data.gridPxLen + data.scrollY)
+        width, height = self.rect[2], self.rect[3]
+        screenX, screenY = gridToScreen(data, self.x, self.y)
+        self.rect.center = (screenX + width//2, screenY + height//2)
+
+class Empty(GameObject):
+    def __init__(self, data, x, y):
+        super().__init__(data, x, y)
+        self.image = data.emptyImage
+        self.rect = self.image.get_rect()
+
+class Person(GameObject):
+    def __init__(self, data, x, y, name, hunger, sleepiness):
+        super().__init__(data, x, y)
+        self.name = name
+        self.hunger = hunger
+        self.sleepiness = sleepiness
+        self.moveSpeed = 5
+        self.image = data.personImage
+        self.rect = self.image.get_rect()
+        self.updatePosition(data)
+
+    def updatePosition(self, data):
+        width, height = self.rect[2], self.rect[3]
+        screenX, screenY = gridToScreen(data, self.x, self.y)
+        self.rect.center = (screenX + width//2, screenY)
 
     def move(self, direction):
         self.x += direction[0]
@@ -59,13 +62,36 @@ class Person(pygame.sprite.Sprite):
 # IMPLEMENT DATA STRUCTS
 ################################################################################
 
-def newPerson(data, x, y): #x and y in gridX and gridY
+def newPerson(data, row, col): #x and y in gridX and gridY
     name = random.choice(tuple(data.firstNames)) + " "\
             + random.choice(string.ascii_uppercase)
-    person = Person(data, x, y, name,100,100)
+    person = Person(data, col, row, name,100,100)
+    data.grid[row][col] = person
+    data.people.add(person)
+    print(person.name)
+
+def newEmpty(data, row, col): #x and y in gridX and gridY
+    name = random.choice(tuple(data.firstNames)) + " "\
+            + random.choice(string.ascii_uppercase)
+    person = Empty(data, col, row)
     data.grid[y][x] = person
     data.people.add(person)
     print(person.name)
+
+def updateAndAdd(data):
+    #update sprites
+    for empty in data.empties:
+        empty.updateSelf(data)
+    for person in data.people:
+        person.updateSelf(data)
+
+    #update groups
+    # data.empties.update()
+    # data.people.update()
+
+    #draw on screen
+    data.empties.draw(data.screen) #least recent call goes to back of canvas
+    data.people.draw(data.screen)
 
 ################################################################################
 # UTILITY
@@ -73,7 +99,7 @@ def newPerson(data, x, y): #x and y in gridX and gridY
 
 #converts an x, y coord to its scrollX, scrollY, coordinates. returns tuple
 
-def validGridPos(gridRow, gridCol, data):
+def validGridPos(data, gridRow, gridCol):
     return gridRow >= 0 and gridRow < len(data.grid)\
         and gridCol >= 0 and gridCol < len(data.grid[0])
 
@@ -96,10 +122,10 @@ def eventHandler(event, data):
     if event.type == pygame.MOUSEBUTTONDOWN:
         mousex = pygame.mouse.get_pos()[0]
         mousey = pygame.mouse.get_pos()[1]
-        gridX, gridY = screenToGrid(data, mousex, mousey)
-        if validGridPos(gridY, gridX, data):
-            newPerson(data, gridX, gridY)
-        else: print("invalid location:", gridX, gridY)
+        col, row = screenToGrid(data, mousex, mousey)
+        if validGridPos(data, row, col):
+            newPerson(data, row, col)
+        else: print("invalid location (row, col):", row, col)
 
 
 def arrowKeysMovement(data):
@@ -122,27 +148,20 @@ def timerFired(data):
     if data.bgMusicChannel.get_queue() ==  None:
         data.bgMusicChannel.queue(data.bgMusic)
         print(data.bgMusicChannel.get_queue())
-    #data.people.update()
-    #data.people.draw(data.screen)
-    for row in range(data.gridHeight):
-        for col in range(data.gridWidth):
-            x, y = gridToScreen(data, col, row)
-            data.screen.blit(data.emptyImage, (x, y))
-    for row in range(data.gridHeight):
-        for col in range(data.gridWidth):
-            drawImages(data, row, col)
+    updateAndAdd(data)
+
 
 ################################################################################
 # GRAPHICS
 ################################################################################
 
-def drawImages(data, row, col):
-    x, y = gridToScreen(data, col, row)
-    image = None
-    if type(data.grid[row][col]) == Person:
-        image = data.personImage
-    if image != None:
-        data.screen.blit(image, (x, y))
+# def drawImages(data, row, col):
+#     x, y = gridToScreen(data, col, row)
+#     image = None
+#     if type(data.grid[row][col]) == Person:
+#         image = data.personImage
+#     if image != None:
+#         data.screen.blit(image, (x, y))
 
 ################################################################################
 # INIT
@@ -165,7 +184,7 @@ def init(data):
 
     #load imgs
     data.emptyImage = pygame.image.load("res/Images/empty.png").convert()
-    data.personImage = pygame.image.load("res/Images/person.png").convert()
+    data.personImage = pygame.image.load("res/Images/person.png").convert_alpha()
     data.restaurantImage = pygame.image.load("res/Images/restaurant.png").convert()
     data.roadImage = pygame.image.load("res/Images/road.png").convert()
 
@@ -174,13 +193,17 @@ def init(data):
     data.scrollX, data.scrollY = 0, 0
 
     #load data structs
-    data.gridWidth, data.gridHeight = 32, 32
+    data.gridWidth, data.gridHeight = 64, 64
     data.gridPxLen = 32
     data.grid = []
     for i in range(data.gridHeight):
         data.grid.append([None] * data.gridWidth)
-    print(data.grid)
     data.people = pygame.sprite.Group()
+    data.empties = pygame.sprite.Group()
+    for row in range(data.gridHeight):
+        for col in range(data.gridWidth):
+            empty = Empty(data, col, row)
+            data.empties.add(empty)
     data.roads = pygame.sprite.Group()
     data.buildings = pygame.sprite.Group()
     data.text = pygame.sprite.Group()
@@ -216,7 +239,7 @@ def setIcon():
 #(some parts modified by me to fit my project)
 
 def copiedInit(data):
-    data.FPS = 60 # frames per second
+    data.FPS = 30 # frames per second
     # initialize the pygame module
     pygame.init()
     data.mixer = pygame.mixer
